@@ -1,0 +1,10 @@
+# build output
+build/
+*.elf
+*.nro
+*.nacp
+*.nsp
+
+# console keys
+*.keys
+prod.keys
