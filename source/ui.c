@@ -29,32 +29,39 @@ static void initPalettes(void) {
     P = &PL;
 }
 
-// The five lines that really run on the Loop, in their real colours. Brown and Purple are lifted a little on the dark theme so they
-// stay visible on a near-black ground.
-static const struct { const char* name; Col light, dark; } LOOP_LINES[5] = {
-    { "Brown",  COL_HEX(0x62361b), COL_HEX(0xb0723f) },
-    { "Green",  COL_HEX(0x009b3a), COL_HEX(0x14b852) },
-    { "Orange", COL_HEX(0xf9461c), COL_HEX(0xff6a3c) },
-    { "Pink",   COL_HEX(0xe27ea6), COL_HEX(0xe27ea6) },
-    { "Purple", COL_HEX(0x522398), COL_HEX(0x8f66dc) },
+// The L's lines, in their real colours. Brown, Purple, Blue and Red are lifted a little on the dark theme so they stay visible on a
+// near-black ground. Pink is light enough that white text on it is hard to read, so text on it is dark.
+#define NLINES 7
+static const struct { const char* name; Col light, dark; bool dark_text; } LOOP_LINES[NLINES] = {
+    { "Blue",   COL_HEX(0x00a1de), COL_HEX(0x1fb6f0), false },
+    { "Brown",  COL_HEX(0x62361b), COL_HEX(0xb0723f), false },
+    { "Green",  COL_HEX(0x009b3a), COL_HEX(0x14b852), false },
+    { "Orange", COL_HEX(0xf9461c), COL_HEX(0xff6a3c), false },
+    { "Pink",   COL_HEX(0xe27ea6), COL_HEX(0xe27ea6), true },
+    { "Purple", COL_HEX(0x522398), COL_HEX(0x8f66dc), false },
+    { "Red",    COL_HEX(0xc60c30), COL_HEX(0xe8344f), false },
 };
-static int g_line[3] = { 4, 2, 1 };  // the two lines on the map, and a third for the header dots
+static int g_line[3] = { 5, 6, 1 };  // the two lines on the map, and a third for the header dots
 
 static Col lineCol(int slot) { return P == &PD ? LOOP_LINES[g_line[slot]].dark : LOOP_LINES[g_line[slot]].light; }
 #define LA() lineCol(0)
 #define LB() lineCol(1)
 #define LC() lineCol(2)
 
+// Each mount draws its lines from one palette: lines that belong together on the L. The first two are the lines on the map and the
+// third colours the header dots and the Eject bar; which is which is shuffled.
+static const int PALETTES[3][3] = {
+    { 6, 5, 1 },  // North Side: Red, Purple, Brown
+    { 0, 4, 2 },  // West Side: Blue, Pink, Green
+    { 6, 2, 3 },  // South Side: Red, Green, Orange
+};
+
 void uiRandomizeLines(unsigned seed) {
     seed = seed * 2654435761u + 12345u;
-    int a = (int)((seed >> 8) % 5);
-    int b = (a + 1 + (int)((seed >> 16) % 4)) % 5;
-    int c = 0;
-    for (int k = (int)((seed >> 24) % 3); ; c = (c + 1) % 5) {
-        if (c == a || c == b) continue;
-        if (k-- == 0) break;
-    }
-    g_line[0] = a; g_line[1] = b; g_line[2] = c;
+    const int* pal = PALETTES[(seed >> 8) % 3];
+    static const int PERM[6][3] = { { 0, 1, 2 }, { 0, 2, 1 }, { 1, 0, 2 }, { 1, 2, 0 }, { 2, 0, 1 }, { 2, 1, 0 } };
+    const int* pm = PERM[(seed >> 16) % 6];
+    g_line[0] = pal[pm[0]]; g_line[1] = pal[pm[1]]; g_line[2] = pal[pm[2]];
 }
 
 static const TextStyle T_REG = { 0, 0.0f, false };
@@ -410,6 +417,24 @@ static void drawNode(Canvas* c, float x, float y) {
     gfxCircle(c, x, y, 16, P->stf);
 }
 
+// The marker and its banner wear the colour of the line they are on: the west tail and the Loop (where line A's stripe lights up) are
+// line A, the east tail is line B. The colour eases across at the junction instead of jumping.
+static int zoneSlot(int z) { return z == Z_O ? 1 : 0; }
+
+static Col markerColor(double now) {
+    static Col cur;
+    static double t0 = -1;
+    Col target = lineCol(zoneSlot(mk.z));
+    if (t0 < 0) cur = target;
+    else {
+        float dt = (float)(now - t0);
+        if (dt > 0.1f) dt = 0.1f;
+        cur = gfxMix(cur, target, 1.0f - expf(-14.0f * dt));
+    }
+    t0 = now;
+    return cur;
+}
+
 static void drawMap(Canvas* c, double now, UiState st) {
     float xy[160], tt[80], fl[2 * NL];
     // Track not yet ridden is a pale tint of the line that owns it. The Loop is two lines overlapped: the blue line's lap and the
@@ -469,10 +494,10 @@ static void drawMap(Canvas* c, double now, UiState st) {
     double pa = now - g_pulse_t0;
     if (pa >= 0 && pa < 0.65) {
         float u = (float)(pa / 0.65), e = 1.0f - (1.0f - u) * (1.0f - u) * (1.0f - u);
-        gfxRing(c, ST[g_pulse_to].x, ST[g_pulse_to].y, 26.0f * (1.0f + 1.6f * e), 6, gfxWithAlpha(stateColor(st), 0.7f * (1.0f - e)));
+        gfxRing(c, ST[g_pulse_to].x, ST[g_pulse_to].y, 26.0f * (1.0f + 1.6f * e), 6, gfxWithAlpha(markerColor(now), 0.7f * (1.0f - e)));
     }
     // marker: halo, ring, dot
-    Col sc = stateColor(st);
+    Col sc = markerColor(now);
     float ph = (float)fmod(now, 2.2) / 2.2f, tg = 0.5f - 0.5f * cosf(6.2831853f * ph);
     gfxCircle(c, mk.x, mk.y, 24.0f + 22.0f * tg, gfxWithAlpha(sc, 0.4f * (1.0f - tg)));
     gfxCircle(c, mk.x, mk.y, 28.5f, COL(255, 255, 255));
@@ -490,7 +515,7 @@ static void drawMap(Canvas* c, double now, UiState st) {
         if (s->tag == 'a') gfxTriangle(c, px - 12, cy + 16, px + 12, cy + 16, px, cy + 32, sc);
         else gfxTriangle(c, px - 12, cy - 16, px + 12, cy - 16, px, cy - 32, sc);
         TextStyle tgs = { 2, 1.5f, false };
-        gfxTextC(c, cx, cy + 6, "YOU ARE HERE", 17, COL(255, 255, 255), &tgs);
+        gfxTextC(c, cx, cy + 6, "YOU ARE HERE", 17, LOOP_LINES[g_line[zoneSlot(mk.z)]].dark_text ? COL_HEX(0x111111) : COL(255, 255, 255), &tgs);
     }
 }
 

@@ -81,13 +81,18 @@ int main(int argc, char** argv) {
             settle((UiState)s, d != 0, dir, nm);
         }
     // other random pairs of real lines
-    for (unsigned seed = 3; seed <= 7; seed += 2)
+    // a spread of seeds covers all three palettes and several orders
+    static const unsigned seeds[] = { 22, 25, 12, 15, 7, 5 };
+    for (unsigned si = 0; si < sizeof(seeds) / sizeof(seeds[0]); si++)
         for (int d = 0; d < 2; d++) {
             char nm[64];
-            uiInit(); uiRandomizeLines(seed);
+            uiInit(); uiRandomizeLines(seeds[si]);
             UiModel lm = model(UI_IDLE, d); uiSetModel(&lm); run(0.2);
             lm = model(UI_MOUNTED, d); uiSetModel(&lm); run(4.0);
-            snprintf(nm, sizeof(nm), "lines_%u_%s", seed, d ? "dark" : "light");
+            snprintf(nm, sizeof(nm), "lines_%u_%s", seeds[si], d ? "dark" : "light");
+            ppm(dir, nm);
+            lm = model(UI_GONE, d); lm.pending = false; uiSetModel(&lm); run(4.0);
+            snprintf(nm, sizeof(nm), "lines_%u_gone_%s", seeds[si], d ? "dark" : "light");
             ppm(dir, nm);
         }
     // mid-flight: Ready to Mounted after 0.35 s, light
