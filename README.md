@@ -1,34 +1,73 @@
-# Loopback
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/images/banner-dark.svg">
+    <img src="docs/images/banner-light.svg" alt="Loopback: Switch SD, over USB" width="880">
+  </picture>
+</p>
 
-<img src="docs/images/mounted.jpg" alt="Loopback on the Switch, mounted" width="720">
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/images/badge-platform-dark.svg">
+    <img src="docs/images/badge-platform-light.svg" alt="platform: Nintendo Switch" height="30">
+  </picture>
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/images/badge-pc-dark.svg">
+    <img src="docs/images/badge-pc-light.svg" alt="PC: Windows 10 / 11" height="30">
+  </picture>
+  <a href="LICENSE"><picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/images/badge-license-dark.svg">
+    <img src="docs/images/badge-license-light.svg" alt="license: MIT" height="30">
+  </picture></a>
+</p>
 
-**Your Switch's SD card as a real drive on your PC.** Open Loopback, plug in a USB-C cable, and `SWITCH SD` appears in Explorer with its own drive letter. No reboot, no payload, nothing to install on the PC.
+<p align="center">
+  <b>Your Switch's SD card as a real drive on your PC.</b><br>
+  Open Loopback, plug in a USB-C cable, and <code>SWITCH SD</code> shows up in Explorer with its own drive letter.<br>
+  No reboot, no payload, nothing to install on the PC.
+</p>
 
-- **It is just a drive.** Drag and drop, right-click, "Open with", Send to, 7-Zip, edit a file in place and press save. Every program that can open a file can open one on your card, because as far as Windows knows it is a USB stick.
-- **Fast.** About 30 to 40 MB/s each way, close to the practical limit of USB 2. A 1.5 GB game copies in well under two minutes.
-- **No driver, no PC software.** It uses the mass storage support built into Windows.
-- **Half a copy never lands.** Your PC's changes are held aside and applied to the card together, so pulling the cable mid-copy leaves the card as it was.
-- **Stays out of your way.** In expert mode it mounts the moment it opens, saves a couple of seconds after your PC stops writing, and quits straight back to the Homebrew Menu.
-- **Clear about what it is doing.** A small transit map shows where you are: reading the card, waiting for the cable, mounted, saving, unplugged.
+<p align="center">
+  <img src="docs/images/mounted.jpg" alt="Loopback on the Switch, mounted" width="720">
+</p>
+
+- **Just a drive.** Drag and drop, right-click, "Open with", Send to, edit a file in place and hit save. Windows thinks it's a USB stick, so anything that can open a file can open one on your card.
+- **Fast.** Around 35 MB/s each way on USB 2. USB 3 speeds are untested.
+- **No driver, no PC software.** It uses the mass storage support that's already in Windows.
+- **Half a copy never lands.** Your PC's changes are held aside and applied to the card all at once, so if you pull the cable mid-copy, the card stays as it was.
+- **Stays out of your way.** It mounts as soon as it opens, saves a couple of seconds after your PC stops writing, and drops you back in the Homebrew Menu when you quit.
+- **Tells you what it's doing.** A small transit map shows where you are: reading the card, waiting for the cable, mounted, saving, unplugged.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/divider-dark.svg">
+  <img src="docs/images/divider-light.svg" alt="" width="100%">
+</picture>
 
 ## Install
 
-You need a Switch with Atmosphere and the Homebrew Menu, a USB-C cable that carries data, and a Windows 10 or 11 PC.
+You need a Switch running Atmosphere with the Homebrew Menu, a USB-C cable that carries data, and a Windows 10 or 11 PC.
 
-1. Download `loopback.nro` from the [latest release](https://github.com/Lii-lac/loopback-nx/releases/latest) and copy it to `sd:/switch/loopback.nro`. (To build it yourself, see [docs/building.md](docs/building.md).)
-2. Open **Loopback** from the Homebrew Menu.
-3. Press `Y` for Advanced, open **Expert mode** and turn it on. This is the intended way to use Loopback, and from then on it mounts as soon as it opens.
-4. Plug the Switch into your PC. `SWITCH SD` appears.
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/route-dark.svg">
+  <img src="docs/images/route-light.svg" alt="Four stops: download, copy to the SD card, open Loopback, plug in. The drive SWITCH SD appears." width="100%">
+</picture>
 
-Back up your SD card before the first time. In expert mode your PC can change or delete anything on it, with no warning.
+1. Download `loopback.nro` from the [latest release](https://github.com/Lii-lac/loopback-nx/releases/latest). (Want to build it yourself? See [docs/building.md](docs/building.md).)
+2. Copy it to `sd:/switch/loopback.nro` on the SD card.
+3. Open **Loopback** from the Homebrew Menu. It mounts the card on its own.
+4. Plug the Switch into your PC. `SWITCH SD` shows up.
+
+**Safety mode.** By default Loopback mounts as soon as it opens, in Read and write, and saves without asking. If you'd rather it ask first, press `Y`, open **Safety mode** and turn it on. Then it waits for you to press Mount, starts read only, and checks with you before anything risky.
+
+> [!WARNING]
+> Back up your SD card before you use this for the first time. By default your PC can change or delete anything on the card without warning. Turn on Safety mode if you want Loopback to ask first.
 
 **Updating:** press `Y`, open **Updates** and check for a newer release. Install it with the drive ejected, then restart Loopback from the same screen. Copying a new `loopback.nro` over `sd:/switch/loopback.nro` works too.
 
-**Home-screen icon (optional):** see [docs/forwarder.md](docs/forwarder.md). It only points at the `.nro`, so updating the app never needs a new one.
+**Home-screen icon (optional):** see [docs/forwarder.md](docs/forwarder.md). It only points at the `.nro`, so you never need a new one when you update the app.
 
 ## Using Loopback
 
-Press `X` to mount, plug in, and work. The map shows where you are and the caption says what comes next.
+Loopback mounts as soon as it opens, so just plug in and work. The map shows where you are, and the caption says what's next.
 
 <table>
 <tr>
@@ -43,11 +82,16 @@ Press `X` to mount, plug in, and work. The map shows where you are and the capti
 </tr>
 </table>
 
-- `X` mounts, and ejects once mounted. `R` saves now. `Y` opens Advanced. `+` quits. Touch works too.
-- Changes reach the card a couple of seconds after your PC stops writing, or at once when you Safely Remove the drive. Pulling the cable mid-copy saves nothing on its own.
-- Files of 4 GiB or more cannot be saved (the card is FAT32), and timestamps are not kept on files you copy in.
+- `X` mounts, and ejects once it's mounted. `R` saves now. `Y` opens Advanced. `+` quits. Touch works too.
+- Changes reach the card a couple of seconds after your PC stops writing, or right away when you Safely Remove the drive. If you pull the cable mid-copy, nothing gets saved on its own.
+- Files of 4 GiB or more can't be saved, and timestamps aren't kept on files you copy in.
 
-Everything else, including expert mode in full, is in [docs/reference.md](docs/reference.md).
+Everything else, including safety mode in full and the known limitations, is in [docs/reference.md](docs/reference.md).
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/divider-dark.svg">
+  <img src="docs/images/divider-light.svg" alt="" width="100%">
+</picture>
 
 ## More
 
@@ -60,4 +104,4 @@ Everything else, including expert mode in full, is in [docs/reference.md](docs/r
 
 ## License
 
-MIT, see [LICENSE](LICENSE). `source/stb_truetype.h` is public domain (or MIT) and carries its own notice.
+MIT, see [LICENSE](LICENSE). Loopback also includes stb_truetype (public domain or MIT), and is built with libnx, libcurl and zlib. Each keeps its own license.
