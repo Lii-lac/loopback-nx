@@ -927,12 +927,15 @@ static void drawPane(Canvas* c) {
         break;
     case S_SAFETY: {
         float rx = x + 32, rw = w - 64;
+        float al = idle ? 1.0f : 0.45f;  // greyed while mounted: it only changes with the drive ejected
         gfxRRect(c, rx, cy, rw, 84, 14, P->bg);
-        gfxText(c, rx + 28, cy + 37, "Safety mode", 28, P->ink, &T_BLD);
-        gfxText(c, rx + 28, cy + 66, g_safety ? "On" : "Off", 22, P->ink2, &T_REG);
+        gfxText(c, rx + 28, cy + 37, "Safety mode", 28, gfxWithAlpha(P->ink, al), &T_BLD);
+        char sub[48];
+        snprintf(sub, sizeof(sub), idle ? "%s" : "%s. Eject first to change it.", g_safety ? "On" : "Off");
+        gfxText(c, rx + 28, cy + 66, sub, 22, gfxWithAlpha(P->ink2, al), &T_REG);
         float sx = rx + rw - 28 - 88, sy = cy + 20;  // the switch
-        gfxRRect(c, sx, sy, 88, 44, 22, g_safety ? P->green : P->mute);
-        gfxCircle(c, g_safety ? sx + 88 - 22 : sx + 22, sy + 22, 17, COL(255, 255, 255));
+        gfxRRect(c, sx, sy, 88, 44, 22, gfxMix(P->bg, g_safety ? P->green : P->mute, al));
+        gfxCircle(c, g_safety ? sx + 88 - 22 : sx + 22, sy + 22, 17, gfxMix(P->bg, COL(255, 255, 255), al));
         addHit(rx, cy, rw, 84, H_OPT, 0);
         if (g_in_pane) focusRing(c, rx, cy, rw, 84, 14);
         gfxText(c, rx + 28, cy + 124, "Turn it on and Loopback:", 22, P->ink2, &T_REG);
@@ -1185,8 +1188,9 @@ static UiAction applyOption(int sec, int opt) {
     if (sec == S_SHARE) { if (atRest(g_m.state)) g_share = (UiShare)opt; }
     else if (sec == S_THEME) { g_theme = (UiTheme)opt; g_back_ok = false; }
     else if (sec == S_SAFETY) {
+        if (!atRest(g_m.state)) return UIA_NONE;  // a PC that is mounted must not see the rules change under it
         g_safety = !g_safety;
-        if (atRest(g_m.state)) g_rw = !g_safety;  // turning safety on goes back to Read only; off makes Read and write the default
+        g_rw = !g_safety;  // turning safety on goes back to Read only; off makes Read and write the default
     } else if (sec == S_UPDATES) {
         char buf[64];
         UpdBtn b = updButton(buf, sizeof(buf));

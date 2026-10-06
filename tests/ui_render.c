@@ -167,6 +167,20 @@ int main(int argc, char** argv) {
     keys(0, 1, 0, 0, 0, 0, 0, 0, 0); keys(0, 1, 0, 0, 0, 0, 0, 0, 0);
     keys(0, 0, 0, 1, 0, 0, 0, 0, 0); keys(0, 0, 0, 0, 1, 0, 0, 0, 0); run(0.2);
     ppm(dir, "adv_safety_on");
+    {   // while mounted the switch is greyed and does nothing; at rest it flips
+        bool bad = !uiSafety();
+        keys(0, 0, 0, 0, 1, 0, 0, 0, 0);
+        bad |= uiSafety();
+        uiInit(); m = model(UI_MOUNTED, false); uiSetModel(&m); run(0.3);
+        keys(0, 0, 0, 0, 0, 0, 0, 1, 0);
+        keys(0, 1, 0, 0, 0, 0, 0, 0, 0); keys(0, 1, 0, 0, 0, 0, 0, 0, 0);
+        keys(0, 0, 0, 1, 0, 0, 0, 0, 0); run(0.2);
+        bool before = uiSafety();
+        keys(0, 0, 0, 0, 1, 0, 0, 0, 0); run(0.2);
+        bad |= uiSafety() != before;
+        ppm(dir, "adv_safety_locked");
+        printf(bad ? "safety lock: FAILED\n" : "safety lock: ok\n");
+    }
     // connecting (cable in, PC not mounted yet) and a pending save with the Save button
     {   // pressing X on a mounted card: the sign lights up line by line
         uiInit(); m = model(UI_MOUNTED, 0); m.io_busy = false; uiSetModel(&m); run(3.0);

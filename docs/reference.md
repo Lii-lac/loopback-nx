@@ -31,7 +31,7 @@ Everything also works by touch.
 | `A` | Press the focused control. |
 | `B` | Back, or cancel a save. |
 
-Access (read only or read and write) and Share are chosen before you mount and are locked while mounted. Eject first to change them.
+Access (read only or read and write), Share and Safety mode are chosen before you mount and are locked while mounted. Eject first to change them.
 
 ## Safety mode
 
