@@ -8,3 +8,4 @@ build/
 # console keys
 *.keys
 prod.keys
+__pycache__/

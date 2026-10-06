@@ -23,6 +23,7 @@ None of these need a Switch. The last three need `--privileged` because they mou
 | `tests/run_synth_test.sh` | The generated volume against `fsck.exfat` and a real mount. |
 | `tests/run_commit_test.sh` | The write path end to end, with the Linux exFAT driver standing in for Windows. 33 scenarios; pass names to run only some. |
 | `tests/run_update_test.sh` | The updater (`source/update.c`) against a fake GitHub (`tests/update_server.py`): good and bad releases, a private repository, a cancel. Needs no `--privileged`. |
+| `tests/fat32_check.py` | Not a test of Loopback: a read-only FAT32 consistency check for an SD card (`python tests/fat32_check.py \\.\F:` from an elevated prompt) or an image of one. `tests/run_fat32_check_test.sh` checks the checker against deliberately broken images. Needs no `--privileged`. |
 | `tests/ui_render.c` | Renders every screen to images with the same drawing code the console runs. Needs gcc and a TTF font. |
 | `tests/windows/` | The write path against the real Windows exFAT driver, through a VHD. See its README. |
 
