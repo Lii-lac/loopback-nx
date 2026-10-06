@@ -32,7 +32,7 @@ static void run(double secs) {
 static UiModel model(UiState s, bool dark) {
     UiModel m;
     memset(&m, 0, sizeof(m));
-    m.state = s; m.dark = dark; m.battery = 84; m.charging = true; m.pct = 17; m.files = 273;
+    m.version = "1.0.0"; m.state = s; m.dark = dark; m.battery = 84; m.charging = true; m.pct = 17; m.files = 273;
     m.link = "High-Speed";
     snprintf(m.read_text, sizeof(m.read_text), "1.2 GiB");
     snprintf(m.written_text, sizeof(m.written_text), "482 MiB");
@@ -104,16 +104,63 @@ int main(int argc, char** argv) {
     run(0.30); ppm(dir, "flight_b");
     // advanced: each section, light and dark
     for (int d = 0; d < 2; d++)
-        for (int sec = 0; sec < 5; sec++) {
+        for (int sec = 0; sec < 6; sec++) {
             char nm[64];
             uiInit(); m = model(UI_IDLE, d); uiSetModel(&m); run(0.3);
             keys(0, 0, 0, 0, 0, 0, 0, 1, 0); run(0.1);
             for (int i = 0; i < sec; i++) keys(0, 1, 0, 0, 0, 0, 0, 0, 0);
-            if (sec == 0 || sec == 2) keys(0, 0, 0, 1, 0, 0, 0, 0, 0);
+            if (sec == 0 || sec == 2 || sec == 3) keys(0, 0, 0, 1, 0, 0, 0, 0, 0);
             run(0.2);
             snprintf(nm, sizeof(nm), "adv%d_%s", sec, d ? "dark" : "light");
             ppm(dir, nm);
         }
+    // the Updates pane in each state: the pane open, light and dark
+    {
+        struct { const char* name; UiUpd u; int pct; const char* latest; const char* msg; UiState st; } sc[] = {
+            { "idle", UI_UPD_IDLE, 0, "", "", UI_IDLE },
+            { "checking", UI_UPD_CHECKING, 0, "", "Checking for a newer version...", UI_IDLE },
+            { "current", UI_UPD_CURRENT, 0, "1.0.0", "You have the latest version.", UI_IDLE },
+            { "available", UI_UPD_AVAILABLE, 0, "1.0.1", "Version 1.0.1 is available.", UI_IDLE },
+            { "available_mounted", UI_UPD_AVAILABLE, 0, "1.0.1", "Version 1.0.1 is available.", UI_MOUNTED },
+            { "downloading", UI_UPD_DOWNLOADING, 62, "1.0.1", "Downloading version 1.0.1...", UI_IDLE },
+            { "ready", UI_UPD_READY, 100, "1.0.1", "Updated to version 1.0.1. Restart Loopback to use it.", UI_IDLE },
+            { "failed", UI_UPD_FAILED, 0, "", "The download did not match its checksum. Nothing was changed.", UI_IDLE },
+            { "private", UI_UPD_FAILED, 0, "", "No release found. The repository may be private.", UI_IDLE },
+        };
+        for (int d = 0; d < 2; d++)
+            for (unsigned i = 0; i < sizeof(sc) / sizeof(sc[0]); i++) {
+                char nm[64];
+                uiInit(); m = model(UI_IDLE, d); uiSetModel(&m); run(0.3);
+                keys(0, 0, 0, 0, 0, 0, 0, 1, 0);
+                for (int k = 0; k < 3; k++) keys(0, 1, 0, 0, 0, 0, 0, 0, 0);
+                keys(0, 0, 0, 1, 0, 0, 0, 0, 0);
+                m = model(sc[i].st, d); m.upd = sc[i].u; m.upd_pct = sc[i].pct;
+                snprintf(m.upd_latest, sizeof(m.upd_latest), "%s", sc[i].latest);
+                snprintf(m.upd_msg, sizeof(m.upd_msg), "%s", sc[i].msg);
+                uiSetModel(&m); run(0.5);
+                snprintf(nm, sizeof(nm), "upd_%s_%s", sc[i].name, d ? "dark" : "light");
+                ppm(dir, nm);
+            }
+        // pressing the button: each state gives the action it should
+        uiInit(); m = model(UI_IDLE, 0); uiSetModel(&m); run(0.3);
+        keys(0, 0, 0, 0, 0, 0, 0, 1, 0);
+        for (int k = 0; k < 3; k++) keys(0, 1, 0, 0, 0, 0, 0, 0, 0);
+        keys(0, 0, 0, 1, 0, 0, 0, 0, 0);
+        struct { UiUpd u; UiState st; UiAction want; } act[] = {
+            { UI_UPD_IDLE, UI_IDLE, UIA_UPD_CHECK }, { UI_UPD_FAILED, UI_IDLE, UIA_UPD_CHECK }, { UI_UPD_CHECKING, UI_IDLE, UIA_UPD_CANCEL },
+            { UI_UPD_AVAILABLE, UI_IDLE, UIA_UPD_INSTALL }, { UI_UPD_AVAILABLE, UI_MOUNTED, UIA_NONE },
+            { UI_UPD_DOWNLOADING, UI_IDLE, UIA_UPD_CANCEL }, { UI_UPD_READY, UI_IDLE, UIA_UPD_RESTART }, { UI_UPD_READY, UI_PENDING, UIA_NONE },
+        };
+        int bad = 0;
+        for (unsigned i = 0; i < sizeof(act) / sizeof(act[0]); i++) {
+            m = model(act[i].st, 0); m.upd = act[i].u; snprintf(m.upd_latest, sizeof(m.upd_latest), "1.0.1");
+            uiSetModel(&m); run(0.1);
+            UiKeys k = { 0, 0, 0, 0, 1, 0, 0, 0, 0, 0 };
+            UiAction got = uiKeys(&k);
+            if (got != act[i].want) { printf("updates button %u: got %d, wanted %d\n", i, (int)got, (int)act[i].want); bad = 1; }
+        }
+        printf(bad ? "updates button: FAILED\n" : "updates button: ok\n");
+    }
     // expert mode switched on
     uiInit(); m = model(UI_IDLE, false); uiSetModel(&m); run(0.3);
     keys(0, 0, 0, 0, 0, 0, 0, 1, 0);

@@ -8,6 +8,7 @@
 #include <math.h>
 #include <stdio.h>
 #include <string.h>
+#include <strings.h>
 #include <sys/stat.h>
 #include <switch.h>
 
@@ -16,7 +17,13 @@
 #include "gfx.h"
 #include "log.h"
 #include "ui.h"
+#include "update.h"
 #include "usb_msc.h"
+
+#ifndef APP_VERSION_STR
+#define APP_VERSION_STR "dev"  // the Makefile passes APP_VERSION
+#endif
+#define DEFAULT_NRO     "sdmc:/switch/loopback.nro"
 
 #define ROOT_WHOLE_CARD "sdmc:"
 #define ROOT_TEST_DIR   "sdmc:/nx-test"
@@ -42,6 +49,12 @@ static volatile int      g_guard_req;          // 1: main asks for the mass-chan
 static volatile int      g_guard_res;          // 1: apply, 2: refuse
 static unsigned          g_guard_del, g_guard_dirs, g_guard_rw;
 static char              g_note[160];          // a line of caption text for Ready and Mounted
+static volatile int      g_restart;            // quit into the freshly installed version instead of the Homebrew Menu
+static char              g_nro_path[256];      // the NRO this run was started from, which an update replaces
+
+_Static_assert((int)UPD_IDLE == (int)UI_UPD_IDLE && (int)UPD_CHECKING == (int)UI_UPD_CHECKING && (int)UPD_CURRENT == (int)UI_UPD_CURRENT &&
+               (int)UPD_AVAILABLE == (int)UI_UPD_AVAILABLE && (int)UPD_DOWNLOADING == (int)UI_UPD_DOWNLOADING &&
+               (int)UPD_READY == (int)UI_UPD_READY && (int)UPD_FAILED == (int)UI_UPD_FAILED, "UiUpd and UpdState must list the same states");
 
 static int  ld(volatile int* p) { return __atomic_load_n(p, __ATOMIC_ACQUIRE); }
 static void st(volatile int* p, int v) { __atomic_store_n(p, v, __ATOMIC_RELEASE); }
@@ -123,6 +136,13 @@ static void fillModel(UiModel* m) {
     m->battery = g_battery;
     m->charging = g_charging;
     m->note = g_note[0] ? g_note : NULL;
+    m->version = APP_VERSION_STR;
+    UpdStatus us;
+    updGet(&us);
+    m->upd = (UiUpd)us.state;
+    m->upd_pct = us.pct;
+    snprintf(m->upd_latest, sizeof(m->upd_latest), "%s", us.latest);
+    snprintf(m->upd_msg, sizeof(m->upd_msg), "%s", us.msg);
     m->link = linkName(s->speed);
     sizeText(m->read_text, sizeof(m->read_text), s->bytes_read);
     sizeText(m->written_text, sizeof(m->written_text), s->bytes_written);
@@ -194,6 +214,13 @@ static void routeAction(UiAction a) {
     if (a == UIA_CANCEL) st(&g_cancel, 1);
     else if (a == UIA_GUARD_APPLY) st(&g_guard_res, 1);
     else if (a == UIA_GUARD_REFUSE) st(&g_guard_res, 2);
+    else if (a == UIA_UPD_CHECK) updCheckAsync();
+    else if (a == UIA_UPD_CANCEL) updCancel();
+    else if (a == UIA_UPD_INSTALL) {
+        // the app file is replaced, so nothing may be mounted (the screen only offers this when the card is at rest; this is the backstop)
+        int s = ld(&g_s_state);
+        if (s == UI_IDLE || (s == UI_GONE && !ld(&g_s_pending))) updInstallAsync();
+    }
     else if (a != UIA_NONE) {
         if (a == UIA_MOUNT) uiRandomizeLines((unsigned)armGetSystemTick());  // a fresh pair of real L lines for each mount
         st(&g_act, (int)a);
@@ -512,9 +539,24 @@ static void stopMount(App* app) {
     st(&g_s_connecting, 0);
 }
 
+// Which file an update replaces: the NRO this run was started from, if the loader says so and it is there, else the usual place.
+static void resolveNro(int argc, char** argv) {
+    snprintf(g_nro_path, sizeof(g_nro_path), "%s", DEFAULT_NRO);
+    if (argc < 1 || !argv || !argv[0]) return;
+    char p[256];
+    if (!strncmp(argv[0], "sdmc:/", 6)) snprintf(p, sizeof(p), "%s", argv[0]);
+    else if (argv[0][0] == '/') snprintf(p, sizeof(p), "sdmc:%s", argv[0]);
+    else return;
+    size_t n = strlen(p);
+    struct stat sb;
+    if (n > 10 && n < sizeof(p) - 1 && !strcasecmp(p + n - 4, ".nro") && stat(p, &sb) == 0) snprintf(g_nro_path, sizeof(g_nro_path), "%s", p);
+}
+
 int main(int argc, char** argv) {
-    (void)argc; (void)argv;
     lgInit();
+    resolveNro(argc, argv);
+    updInit(APP_VERSION_STR, g_nro_path, APP_DIR);
+    lg("loopback %s, app file %s", APP_VERSION_STR, g_nro_path);
     padConfigureInput(1, HidNpadStyleSet_NpadStandard);
     padInitializeDefault(&g_pad);
     hidInitializeTouchScreen();
@@ -549,8 +591,14 @@ int main(int argc, char** argv) {
         int act = __atomic_exchange_n(&g_act, UIA_NONE, __ATOMIC_ACQ_REL);
         bool want_quit = false;
         switch ((UiAction)act) {
+        case UIA_UPD_RESTART:
+            if (!app.running) { g_restart = 1; want_quit = true; }
+            break;
         case UIA_MOUNT:
             if (!app.running) {
+                UpdStatus us;
+                updGet(&us);
+                if (us.state == UPD_DOWNLOADING) break;  // the app file is being replaced; the card is scanned once that is done
                 app.ejected = false;
                 app.share = uiShare();
                 app.be = startMount(app.share, uiAccessRw(), &app.write, &init_rc);
@@ -644,12 +692,17 @@ int main(int argc, char** argv) {
     st(&g_exit, 1);
     if (ui_started) { threadWaitForExit(&ui_thread); threadClose(&ui_thread); }
     stopMount(&app);  // the PC sees the drive go away, nothing stays locked
+    updShutdown();    // a download in progress is cancelled and its partial file removed at the next start
     (void)init_rc;
-    // Quit goes back to the Homebrew Menu instead of leaving to Home (needed when launched from the forwarder).
+    // Quit goes back to the Homebrew Menu instead of leaving to Home (needed when launched from the forwarder). After an update it
+    // starts Loopback again instead, now the new version.
     if (envHasNextLoad()) {
-        Result nr = envSetNextLoad("sdmc:/hbmenu.nro", "\"sdmc:/hbmenu.nro\"");
-        lg("next load hbmenu: %08x", nr);
-    }
+        const char* next = g_restart ? g_nro_path : "sdmc:/hbmenu.nro";
+        char nargv[300];
+        snprintf(nargv, sizeof(nargv), "\"%s\"", next);
+        Result nr = envSetNextLoad(next, nargv);
+        lg("next load %s: %08x", next, nr);
+    } else if (g_restart) lg("restart asked for, but there is no loader to start it");
     if (g_fb_ok) framebufferClose(&g_fb);
     plExit();
     setsysExit();

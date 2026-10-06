@@ -664,6 +664,10 @@ static void panelShadow(Canvas* c, float x, float y, float w, float h, float r) 
 #define PANE_W 830
 #define TOP 116
 #define PANE_H 480
+#define RAIL_STEP 80
+#define RAIL_H 68
+
+enum { S_SHARE, S_THEME, S_EXPERT, S_UPDATES, S_LINK, S_ACTIVITY, S_COUNT };  // Advanced sections, in the order of the list
 
 static float backWidth(void) { return 28 + 32 + 12 + gfxTextWidth("Back", 26, &T_BLD) + 28; }
 
@@ -680,7 +684,7 @@ static void buildBase(Canvas* c, int view, UiState st, bool cn) {
         panelShadow(c, r.ax, BTN_Y, r.aw, BTN_H, 12);
         panelShadow(c, QUIT_X, BTN_Y, QUIT_W, BTN_H, 12);
     } else {
-        for (int i = 0; i < 5; i++) panelShadow(c, RAIL_X, TOP + i * 84, RAIL_W, 72, 14);
+        for (int i = 0; i < S_COUNT; i++) panelShadow(c, RAIL_X, TOP + i * RAIL_STEP, RAIL_W, RAIL_H, 14);
         panelShadow(c, PANE_X, TOP, PANE_W, PANE_H, 20);
         panelShadow(c, 64, 624, backWidth(), 64, 12);
     }
@@ -764,11 +768,12 @@ static void drawMain(Canvas* c, double now) {
 // ---------------------------------------------------------------------------------------------
 // Advanced: a list of sections on the left, one calm pane on the right.
 
-static const char* const SEC_NAME[5] = { "Share", "Appearance", "Expert mode", "Connection", "Activity" };
-static const char* const SEC_DESC[5] = {
+static const char* const SEC_NAME[S_COUNT] = { "Share", "Appearance", "Expert mode", "Updates", "Connection", "Activity" };
+static const char* const SEC_DESC[S_COUNT] = {
     "What your PC sees when you mount. Eject first to change it.",
     "Colours for this screen.",
     "For when you know what you are doing. Off unless you turn it on.",
+    "Look for a newer Loopback and install it.",
     "How your PC is talking to this Switch.",
     "What happened in this session.",
 };
@@ -783,16 +788,41 @@ static const char* const EXPERT_LINES[4] = {
     "Quitting or ejecting saves your changes first.",
 };
 
-static int secOptCount(int sec) { return sec <= 1 ? 3 : sec == 2 ? 1 : 0; }
-static int secSelected(int sec) { return sec == 0 ? (int)g_share : sec == 1 ? (int)g_theme : 0; }
+static int secOptCount(int sec) { return sec == S_SHARE || sec == S_THEME ? 3 : sec == S_EXPERT || sec == S_UPDATES ? 1 : 0; }
+static int secSelected(int sec) { return sec == S_SHARE ? (int)g_share : sec == S_THEME ? (int)g_theme : 0; }
 
 static void secValue(int sec, char* out, size_t cap) {
     switch (sec) {
-    case 0: snprintf(out, cap, "%s", SHARE_NAME[g_share]); break;
-    case 1: snprintf(out, cap, "%s", g_theme == UI_THEME_AUTO ? "Auto" : THEME_NAME[g_theme]); break;
-    case 2: snprintf(out, cap, "%s", g_expert ? "On" : "Off"); break;
-    case 3: snprintf(out, cap, "%s", g_m.link ? g_m.link : "-"); break;
+    case S_SHARE: snprintf(out, cap, "%s", SHARE_NAME[g_share]); break;
+    case S_THEME: snprintf(out, cap, "%s", g_theme == UI_THEME_AUTO ? "Auto" : THEME_NAME[g_theme]); break;
+    case S_EXPERT: snprintf(out, cap, "%s", g_expert ? "On" : "Off"); break;
+    case S_UPDATES:
+        if (g_m.upd == UI_UPD_READY) snprintf(out, cap, "Restart to finish");
+        else if (g_m.upd == UI_UPD_AVAILABLE) snprintf(out, cap, "%s available", g_m.upd_latest);
+        else snprintf(out, cap, "Version %s", g_m.version ? g_m.version : "-");
+        break;
+    case S_LINK: snprintf(out, cap, "%s", g_m.link ? g_m.link : "-"); break;
     default: out[0] = 0; break;
+    }
+}
+
+// The one button of the Updates pane: what it says and what pressing it does. Installing and restarting need the card to be at
+// rest, because the app file on it is replaced and a PC that is mounted on it would see that happen underneath it.
+typedef struct { const char* label; UiAction act; bool enabled, outline; Col col; } UpdBtn;
+
+static UpdBtn updButton(char* buf, size_t cap) {
+    bool rest = atRest(g_m.state);
+    switch (g_m.upd) {
+    case UI_UPD_CHECKING:
+    case UI_UPD_DOWNLOADING:
+        return (UpdBtn){ "Cancel", UIA_UPD_CANCEL, true, true, P->ink };
+    case UI_UPD_AVAILABLE:
+        snprintf(buf, cap, rest ? "Download and install %s" : "Eject first to install %s", g_m.upd_latest);
+        return (UpdBtn){ buf, UIA_UPD_INSTALL, rest, false, P->blue };
+    case UI_UPD_READY:
+        return (UpdBtn){ rest ? "Restart Loopback" : "Eject first to restart", UIA_UPD_RESTART, rest, false, P->green };
+    default:
+        return (UpdBtn){ "Check for updates", UIA_UPD_CHECK, true, false, P->blue };
     }
 }
 
@@ -802,20 +832,20 @@ static void chevron(Canvas* c, float x, float y, Col col) {
 }
 
 static void drawRail(Canvas* c) {
-    for (int i = 0; i < 5; i++) {
-        float y = TOP + i * 84;
+    for (int i = 0; i < S_COUNT; i++) {
+        float y = TOP + i * RAIL_STEP;
         bool sel = i == g_sec;
-        gfxRRect(c, RAIL_X, y, RAIL_W, 72, 14, sel ? P->chip : P->card);
-        if (!sel) gfxRRectStroke(c, RAIL_X, y, RAIL_W, 72, 14, 2, P->out_stroke);
+        gfxRRect(c, RAIL_X, y, RAIL_W, RAIL_H, 14, sel ? P->chip : P->card);
+        if (!sel) gfxRRectStroke(c, RAIL_X, y, RAIL_W, RAIL_H, 14, 2, P->out_stroke);
         Col ink = sel ? COL(255, 255, 255) : P->ink;
         Col ink2 = sel ? COL_HEX(0xb8bcc6) : P->ink2;
         char v[40];
         secValue(i, v, sizeof(v));
-        gfxText(c, RAIL_X + 26, v[0] ? y + 33 : y + 45, SEC_NAME[i], 27, ink, &T_BLD);
-        if (v[0]) gfxText(c, RAIL_X + 26, y + 59, v, 20, ink2, &T_REG);
-        if (sel) chevron(c, RAIL_X + RAIL_W - 34, y + 36, ink2);
-        addHit(RAIL_X, y, RAIL_W, 72, H_RAIL, i);
-        if (sel && !g_in_pane) focusRing(c, RAIL_X, y, RAIL_W, 72, 14);
+        gfxText(c, RAIL_X + 26, v[0] ? y + 31 : y + 43, SEC_NAME[i], 27, ink, &T_BLD);
+        if (v[0]) gfxText(c, RAIL_X + 26, y + 57, v, 20, ink2, &T_REG);
+        if (sel) chevron(c, RAIL_X + RAIL_W - 34, y + RAIL_H / 2, ink2);
+        addHit(RAIL_X, y, RAIL_W, RAIL_H, H_RAIL, i);
+        if (sel && !g_in_pane) focusRing(c, RAIL_X, y, RAIL_W, RAIL_H, 14);
     }
 }
 
@@ -833,8 +863,41 @@ static void drawOptionRow(Canvas* c, float x, float y, float w, const char* titl
     if (g_in_pane && g_opt == idx) focusRing(c, x, y, w, 84, 14);
 }
 
+static void drawUpdates(Canvas* c, float x, float y, float w, float h, float cy) {
+    const char* kv[2][2] = { { "Installed", g_m.version ? g_m.version : "-" }, { "Latest", g_m.upd_latest[0] ? g_m.upd_latest : "Not checked yet" } };
+    for (int i = 0; i < 2; i++) {
+        float ly = cy + 40 + i * 58;
+        gfxText(c, x + 40, ly, kv[i][0], 26, P->ink, &T_REG);
+        gfxTextR(c, x + w - 40, ly, kv[i][1], 26, P->ink2, &T_REG);
+        if (i == 0) gfxRRect(c, x + 40, ly + 18, w - 80, 1.5f, 0, P->mute);
+    }
+    if (g_m.upd_msg[0]) gfxTextWrap(c, x + 40, cy + 150, w - 80, 32, g_m.upd_msg, 24, g_m.upd == UI_UPD_FAILED ? P->red : P->ink, &T_REG);
+    if (g_m.upd == UI_UPD_DOWNLOADING) {
+        float bw = w - 80, by = cy + 174;
+        gfxRRect(c, x + 40, by, bw, 10, 5, P->mute);
+        int pct = g_m.upd_pct < 0 ? 0 : g_m.upd_pct > 100 ? 100 : g_m.upd_pct;
+        if (pct > 0) gfxRRect(c, x + 40, by, bw * pct / 100.0f, 10, 5, P->blue);
+    }
+    char buf[64];
+    UpdBtn b = updButton(buf, sizeof(buf));
+    float bx = x + 32, bw = w - 64, by = y + h - 32 - 76;
+    if (b.outline) {
+        gfxRRect(c, bx, by, bw, 76, 12, P->card);
+        gfxRRectStroke(c, bx, by, bw, 76, 12, 2.5f, P->out_stroke);
+        gfxTextC(c, bx + bw / 2, by + 48, b.label, 30, P->ink, &T_BLD);
+    } else if (!b.enabled) {
+        gfxRRect(c, bx, by, bw, 76, 12, P->mute);
+        gfxTextC(c, bx + bw / 2, by + 48, b.label, 30, P->ink2, &T_BLD);
+    } else {
+        gfxRRect(c, bx, by, bw, 76, 12, b.col);
+        gfxTextC(c, bx + bw / 2, by + 48, b.label, 30, COL(255, 255, 255), &T_BLD);
+    }
+    addHit(bx, by, bw, 76, H_OPT, 0);
+    if (g_in_pane) focusRing(c, bx, by, bw, 76, 12);
+}
+
 static void drawPane(Canvas* c) {
-    bool dark = g_sec == 4;
+    bool dark = g_sec == S_ACTIVITY;
     float x = PANE_X, y = TOP, w = PANE_W, h = PANE_H;
     gfxRRect(c, x, y, w, h, 20, dark ? P->panel : P->card);
     if (!dark) gfxRRectStroke(c, x, y, w, h, 20, 2, P->faint);
@@ -847,13 +910,16 @@ static void drawPane(Canvas* c) {
     float cy = y + 146;
     bool idle = atRest(g_m.state);
     switch (g_sec) {
-    case 0:
+    case S_SHARE:
         for (int i = 0; i < 3; i++) drawOptionRow(c, x + 32, cy + i * 96, w - 64, SHARE_NAME[i], SHARE_DESC[i], (int)g_share == i, idle, i);
         break;
-    case 1:
+    case S_THEME:
         for (int i = 0; i < 3; i++) drawOptionRow(c, x + 32, cy + i * 96, w - 64, THEME_NAME[i], THEME_DESC[i], (int)g_theme == i, true, i);
         break;
-    case 2: {
+    case S_UPDATES:
+        drawUpdates(c, x, y, w, h, cy);
+        break;
+    case S_EXPERT: {
         float rx = x + 32, rw = w - 64;
         gfxRRect(c, rx, cy, rw, 84, 14, P->bg);
         gfxText(c, rx + 28, cy + 37, "Enable expert mode", 28, P->ink, &T_BLD);
@@ -870,7 +936,7 @@ static void drawPane(Canvas* c) {
         }
         break;
     }
-    case 3: {
+    case S_LINK: {
         char errs[16];
         snprintf(errs, sizeof(errs), "%u", g_m.errors);
         const char* kv[5][2] = { { "Link", g_m.link ? g_m.link : "-" }, { "Access", g_rw ? "Read and write" : "Read only" },
@@ -1063,6 +1129,7 @@ static UiAction notePress(UiAction a, bool eject) {
 static UiAction pressPrimary(void) {
     UiState st = g_m.state;
     if (atRest(st)) {
+        if (g_m.upd == UI_UPD_DOWNLOADING) return UIA_NONE;  // the app file is being replaced; mounting would scan it mid-swap
         if (g_rw && g_share == UI_SHARE_WHOLE && !g_allowed_whole && !g_expert) { openDlg(D_WARN, 0); return UIA_NONE; }
         return notePress(UIA_MOUNT, false);
     }
@@ -1107,13 +1174,18 @@ static UiAction dlgResolve(int pick) {
     }
 }
 
-static void applyOption(int sec, int opt) {
-    if (sec == 0) { if (atRest(g_m.state)) g_share = (UiShare)opt; }
-    else if (sec == 1) { g_theme = (UiTheme)opt; g_back_ok = false; }
-    else if (sec == 2) {
+static UiAction applyOption(int sec, int opt) {
+    if (sec == S_SHARE) { if (atRest(g_m.state)) g_share = (UiShare)opt; }
+    else if (sec == S_THEME) { g_theme = (UiTheme)opt; g_back_ok = false; }
+    else if (sec == S_EXPERT) {
         g_expert = !g_expert;
         if (atRest(g_m.state)) g_rw = g_expert;  // turning it on makes Read and write the default; off goes back to Read only
+    } else if (sec == S_UPDATES) {
+        char buf[64];
+        UpdBtn b = updButton(buf, sizeof(buf));
+        return b.enabled ? b.act : UIA_NONE;
     }
+    return UIA_NONE;
 }
 
 static UiAction mainKeys(const UiKeys* k) {
@@ -1149,14 +1221,14 @@ static UiAction advKeys(const UiKeys* k) {
     if (!g_in_pane) {
         if (k->b || k->y) { g_view = V_MAIN; return UIA_NONE; }
         if (k->up && g_sec > 0) g_sec--;
-        if (k->down && g_sec < 4) g_sec++;
+        if (k->down && g_sec < S_COUNT - 1) g_sec++;
         if ((k->a || k->right) && count > 0) { g_in_pane = true; g_opt = secSelected(g_sec); }
         return UIA_NONE;
     }
     if (k->b || k->left) { g_in_pane = false; return UIA_NONE; }
     if (k->up && g_opt > 0) g_opt--;
     if (k->down && g_opt < count - 1) g_opt++;
-    if (k->a) applyOption(g_sec, g_opt);
+    if (k->a) return applyOption(g_sec, g_opt);
     return UIA_NONE;
 }
 
@@ -1196,7 +1268,7 @@ UiAction uiTouch(int x, int y) {
             switch (h->id) {
             case H_BACK: g_view = V_MAIN; return UIA_NONE;
             case H_RAIL: g_sec = h->arg; g_in_pane = false; return UIA_NONE;
-            case H_OPT: g_in_pane = true; g_opt = h->arg; applyOption(g_sec, h->arg); return UIA_NONE;
+            case H_OPT: g_in_pane = true; g_opt = h->arg; return applyOption(g_sec, h->arg);
             default: continue;
             }
         }

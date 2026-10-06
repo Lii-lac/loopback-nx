@@ -22,7 +22,7 @@ You need a Switch with Atmosphere and the Homebrew Menu, a USB-C cable that carr
 
 Back up your SD card before the first time. In expert mode your PC can change or delete anything on it, with no warning.
 
-**Updating:** mount Loopback in expert mode, copy the new `loopback.nro` to `<drive>:\switch\loopback.nro`, wait for the save, press `+`, and open it again.
+**Updating:** press `Y`, open **Updates** and check for a newer release. Install it with the drive ejected, then restart Loopback from the same screen. Copying a new `loopback.nro` over `sd:/switch/loopback.nro` works too.
 
 **Home-screen icon (optional):** see [docs/forwarder.md](docs/forwarder.md). It only points at the `.nro`, so updating the app never needs a new one.
 

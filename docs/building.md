@@ -22,6 +22,7 @@ None of these need a Switch. The last three need `--privileged` because they mou
 | `tests/run_parse_test.sh` | The exFAT parser against volumes made by `mkfs.exfat`. |
 | `tests/run_synth_test.sh` | The generated volume against `fsck.exfat` and a real mount. |
 | `tests/run_commit_test.sh` | The write path end to end, with the Linux exFAT driver standing in for Windows. 33 scenarios; pass names to run only some. |
+| `tests/run_update_test.sh` | The updater (`source/update.c`) against a fake GitHub (`tests/update_server.py`): good and bad releases, a private repository, a cancel. Needs no `--privileged`. |
 | `tests/ui_render.c` | Renders every screen to images with the same drawing code the console runs. Needs gcc and a TTF font. |
 | `tests/windows/` | The write path against the real Windows exFAT driver, through a VHD. See its README. |
 
@@ -51,6 +52,17 @@ Re-run them after any change under `source/` that touches the volume or the writ
 | `source/overlay.c` | Scratch store for the PC's writes |
 | `source/exfat_parse.c` | Reads an exFAT image back into a tree |
 | `source/synth_commit.c` | Turns the PC's changes into file operations on the card |
+| `source/update.c`, `update.h` | Self-update from GitHub releases: libcurl, SHA-256, file swap |
 | `source/log.c` | Thread-safe logger |
 | `tests/` | The tests above |
 | `icon.jpg` | The app icon. `make` does not track it, so delete `loopback.nro` after changing it |
+
+## Cutting a release
+
+The in-app updater reads the repository's latest GitHub release, so a release has to look the way it expects:
+
+1. Set `APP_VERSION` in the `Makefile` to the new version (`1.0.1`), delete `loopback.nro`, and build. The app compares this number with the release tag, so the tag must be the same version with an optional `v` (`v1.0.1`).
+2. Make the checksum file in the form `sha256sum` writes: `<64 hex digits> *loopback.nro` (`sha256sum -b loopback.nro > loopback.nro.sha256`).
+3. Create the release on the tag `v1.0.1` and attach exactly two assets, named `loopback.nro` and `loopback.nro.sha256`. Do not mark it as a pre-release: GitHub's "latest" skips those, and so does the updater.
+
+If the repository is renamed or recreated, change `UPD_REPO_URL` in `source/update.h` (or pass `-DUPD_REPO_URL=...`) and ship a build with the new address; the old address stops finding releases once the old repository is gone.

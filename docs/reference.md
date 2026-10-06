@@ -53,8 +53,25 @@ The setting is kept in `sd:/switch/loopback/settings.txt`.
 | Share | Whole card, only `sd:/nx-test`, or a small RAM disk for checking the cable. |
 | Appearance | Match the console, light or dark. |
 | Expert mode | See above. |
+| Updates | Check for a newer release and install it. See below. |
 | Connection | Link speed and access. |
 | Activity | What happened this session. |
+
+## Updating
+
+Advanced, then **Updates**. It shows the version you have and the newest release, and has one button that changes with the state:
+
+| Button | When |
+|---|---|
+| Check for updates | Nothing checked yet, up to date, or the last try failed. Needs Wi-Fi. |
+| Download and install X | A newer release exists. |
+| Cancel | While checking or downloading. |
+| Restart Loopback | After installing. Starts the new version. |
+
+- Checking works at any time. Installing and restarting need the drive to be ejected, because they replace the app file on the card.
+- Nothing is changed unless the download is a Switch app and its SHA-256 matches the `loopback.nro.sha256` published with the release. The old version is kept as `sd:/switch/loopback/loopback.nro.bak`; to go back, copy it over `sd:/switch/loopback.nro`.
+- The forwarder does not need reinstalling. It launches `sd:/switch/loopback.nro`, which is the file that gets replaced.
+- It looks at the project's GitHub releases (`github.com/Lii-lac/loopback-nx`, set by `UPD_REPO_URL` in `source/update.h`). The repository has to be public, or the check says "No release found".
 
 ## Saving
 

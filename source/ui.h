@@ -12,9 +12,17 @@ typedef enum { UI_IDLE, UI_READING, UI_WAITING, UI_MOUNTED, UI_PENDING, UI_SAVIN
 typedef enum { UI_SHARE_WHOLE, UI_SHARE_TEST, UI_SHARE_RAM } UiShare;
 typedef enum { UI_THEME_AUTO, UI_THEME_LIGHT, UI_THEME_DARK } UiTheme;  // AUTO follows the console's own setting
 
+// Same order as UpdState in update.h (main.c converts); ui.c does not depend on the update engine.
+typedef enum { UI_UPD_IDLE, UI_UPD_CHECKING, UI_UPD_CURRENT, UI_UPD_AVAILABLE, UI_UPD_DOWNLOADING, UI_UPD_READY, UI_UPD_FAILED } UiUpd;
+
 typedef struct {
     UiState     state;
     bool        dark;
+    const char* version;      // this build's version, "1.0.0"
+    UiUpd       upd;          // Advanced > Updates
+    int         upd_pct;      // download progress 0..100
+    char        upd_latest[24];
+    char        upd_msg[120];
     bool        pending;      // the PC wrote data that is not on the card yet
     bool        connecting;   // the cable is in and the PC is setting the drive up, but has not mounted it yet
     int         pct;          // saving progress 0..100
@@ -45,7 +53,11 @@ typedef enum {
     UIA_EJECT_SAVE,    // save, then eject
     UIA_EJECT_DISCARD, // eject without saving
     UIA_GUARD_APPLY,   // the mass-change prompt: apply
-    UIA_GUARD_REFUSE   // the mass-change prompt: refuse
+    UIA_GUARD_REFUSE,  // the mass-change prompt: refuse
+    UIA_UPD_CHECK,     // look for a newer release
+    UIA_UPD_INSTALL,   // download and install the release the check found (only offered when nothing is mounted)
+    UIA_UPD_CANCEL,    // stop the check or download
+    UIA_UPD_RESTART    // quit and start Loopback again, now the new version
 } UiAction;
 
 void     uiInit(void);
