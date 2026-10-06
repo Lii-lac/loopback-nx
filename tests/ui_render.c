@@ -161,12 +161,12 @@ int main(int argc, char** argv) {
         }
         printf(bad ? "updates button: FAILED\n" : "updates button: ok\n");
     }
-    // expert mode switched on
+    // safety mode switched on
     uiInit(); m = model(UI_IDLE, false); uiSetModel(&m); run(0.3);
     keys(0, 0, 0, 0, 0, 0, 0, 1, 0);
     keys(0, 1, 0, 0, 0, 0, 0, 0, 0); keys(0, 1, 0, 0, 0, 0, 0, 0, 0);
     keys(0, 0, 0, 1, 0, 0, 0, 0, 0); keys(0, 0, 0, 0, 1, 0, 0, 0, 0); run(0.2);
-    ppm(dir, "adv_expert_on");
+    ppm(dir, "adv_safety_on");
     // connecting (cable in, PC not mounted yet) and a pending save with the Save button
     {   // pressing X on a mounted card: the sign lights up line by line
         uiInit(); m = model(UI_MOUNTED, 0); m.io_busy = false; uiSetModel(&m); run(3.0);
@@ -201,7 +201,7 @@ int main(int argc, char** argv) {
     for (int d = 0; d < 2; d++) {
         const char* sfx = d ? "dark" : "light";
         char nm[64];
-        uiInit(); m = model(UI_IDLE, d); uiSetModel(&m); run(0.3);
+        uiInit(); uiSetSafety(true); m = model(UI_IDLE, d); uiSetModel(&m); run(0.3);  // the whole-card warning belongs to safety mode
         keys(0, 0, 0, 1, 0, 0, 0, 0, 0);   // focus: the access pill
         keys(0, 0, 0, 0, 1, 0, 0, 0, 0);   // A flips it to Read and write
         keys(0, 0, 0, 0, 0, 0, 1, 0, 0);   // X: mount, which asks first

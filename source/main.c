@@ -183,16 +183,20 @@ static UiKeys readKeys(void) {
     return k;
 }
 
-// Settings chosen in Advanced are kept in a small file next to the log: "theme=auto|light|dark" and "expert=0|1".
+// Settings chosen in Advanced are kept in a small file next to the log: "theme=auto|light|dark" and "safety=0|1". (An older file may say "expert=0|1" instead; that is read as the opposite.)
 static void loadSettings(void) {
     FILE* f = fopen(SETTINGS_PATH, "r");
     if (f) {
         char line[64];
+        bool have_safety = false;
+        int legacy_expert = -1;
         while (fgets(line, sizeof(line), f)) {
             if (!strncmp(line, "theme=", 6)) uiSetTheme(!strncmp(line + 6, "dark", 4) ? UI_THEME_DARK : !strncmp(line + 6, "light", 5) ? UI_THEME_LIGHT : UI_THEME_AUTO);
-            else if (!strncmp(line, "expert=", 7)) uiSetExpert(line[7] == '1');
+            else if (!strncmp(line, "safety=", 7)) { uiSetSafety(line[7] == '1'); have_safety = true; }
+            else if (!strncmp(line, "expert=", 7)) legacy_expert = line[7] == '1';
         }
         fclose(f);
+        if (!have_safety && legacy_expert >= 0) uiSetSafety(!legacy_expert);
         return;
     }
     f = fopen(OLD_THEME_PATH, "r");  // the first version kept only the theme
@@ -202,10 +206,10 @@ static void loadSettings(void) {
     fclose(f);
 }
 
-static void saveSettings(UiTheme t, bool expert) {
+static void saveSettings(UiTheme t, bool safety) {
     FILE* f = fopen(SETTINGS_PATH, "w");
     if (!f) return;
-    fprintf(f, "theme=%s\nexpert=%d\n", t == UI_THEME_DARK ? "dark" : t == UI_THEME_LIGHT ? "light" : "auto", expert ? 1 : 0);
+    fprintf(f, "theme=%s\nsafety=%d\n", t == UI_THEME_DARK ? "dark" : t == UI_THEME_LIGHT ? "light" : "auto", safety ? 1 : 0);
     fclose(f);
 }
 
@@ -233,7 +237,7 @@ static void routeAction(UiAction a) {
 static void uiThread(void* arg) {
     (void)arg;
     UiTheme saved_theme = uiTheme();
-    bool saved_expert = uiExpert();
+    bool saved_safety = uiSafety();
     bool touching = false;
     u64 stat_t0 = armGetSystemTick();
     u64 fade_t0 = 0;  // set once the first (black) frame is presented
@@ -257,9 +261,9 @@ static void uiThread(void* arg) {
             uiOpenGuard(g_guard_del, g_guard_dirs, g_guard_rw);
             st(&g_guard_req, 2);
         }
-        if (uiTheme() != saved_theme || uiExpert() != saved_expert) {
-            saved_theme = uiTheme(); saved_expert = uiExpert();
-            saveSettings(saved_theme, saved_expert);
+        if (uiTheme() != saved_theme || uiSafety() != saved_safety) {
+            saved_theme = uiTheme(); saved_safety = uiSafety();
+            saveSettings(saved_theme, saved_safety);
         }
 
         pollSystem();
@@ -324,7 +328,7 @@ static void uiThread(void* arg) {
 // Main thread: write mode, mounting, USB
 
 #define IDLE_COMMIT_NS 5000000000ULL  // no writes for this long
-#define EXPERT_COMMIT_NS 2000000000ULL  // expert mode saves as soon as a copy looks finished
+#define QUICK_COMMIT_NS 2000000000ULL  // with safety mode off, a save starts as soon as a copy looks finished
 #define SYNC_QUIET_NS   500000000ULL  // after a flush from the PC, once writes have stopped this long
 
 typedef struct {
@@ -343,7 +347,7 @@ static void commitLogLine(const char* line, void* user) {
 // The mass-change guard: the PC deleted or overwrote a lot. The UI thread shows the prompt and reports the answer.
 static bool confirmCommit(const CommitReport* r, void* user) {
     (void)user;
-    if (uiExpert()) { lg("expert mode: applying %u deletions/overwrites without asking", r->files_deleted + r->dirs_deleted + r->files_rewritten); return true; }
+    if (!uiSafety()) { lg("safety mode off: applying %u deletions/overwrites without asking", r->files_deleted + r->dirs_deleted + r->files_rewritten); return true; }
     g_guard_del = r->files_deleted; g_guard_dirs = r->dirs_deleted; g_guard_rw = r->files_rewritten;
     st(&g_guard_res, 0);
     st(&g_guard_req, 1);
@@ -423,7 +427,7 @@ static void writeTriggers(Backend* be, WriteState* w) {
     bool attached = s->state == UsbState_Configured;
     if (s->eject_cmds != w->seen_eject)                                          why = "eject";
     else if (attached && s->sync_cmds != w->seen_sync && idle > SYNC_QUIET_NS)  why = "flush";
-    else if (attached && idle > (uiExpert() ? EXPERT_COMMIT_NS : IDLE_COMMIT_NS)) why = "idle";
+    else if (attached && idle > (uiSafety() ? IDLE_COMMIT_NS : QUICK_COMMIT_NS)) why = "idle";
     if (!why) return;
     runCommit(be, w, why);
     w->seen_sync = s->sync_cmds;
@@ -584,8 +588,8 @@ int main(int argc, char** argv) {
     Result init_rc = 0;
     bool host_mounted = false;  // latched once the PC has mounted the drive, until the cable comes out
 
-    // Expert mode mounts as soon as the app opens (Read and write, whole card, as that mode defaults to).
-    if (uiExpert()) __atomic_store_n(&g_act, UIA_MOUNT, __ATOMIC_RELEASE);
+    // With safety mode off the app mounts as soon as it opens (Read and write, whole card, as that mode defaults to).
+    if (!uiSafety()) __atomic_store_n(&g_act, UIA_MOUNT, __ATOMIC_RELEASE);
 
     while (appletMainLoop()) {
         int act = __atomic_exchange_n(&g_act, UIA_NONE, __ATOMIC_ACQ_REL);

@@ -23,12 +23,16 @@ The PC sends raw sector writes: directory entries, bitmap updates and file data,
 3. **Apply.** New contents are written to a stage folder first, after checking the card has room, so a failure leaves the card unchanged. Then every moved or rewritten old file is parked in the stage folder, deleted items are removed (files, then folders deepest first), the new tree is placed top-down, and the stage folder is removed. Nothing is overwritten in place. A new or rewritten file of 4 MiB or more that sits whole in one segment is not copied: its segment file is cut to size and renamed into place.
 4. **Rescan.** The card is the truth after a save, so the volume is rebuilt from a fresh scan, the overlay is emptied and the SCSI layer reports a media change once. Windows remounts the drive.
 
-A save is refused as a whole, with the card untouched and the PC's changes kept, if the volume was reformatted, the image is half written, a name is not valid on FAT32, a file is 4 GiB or more, or a file the PC touched changed on the Switch after the scan. Large deletions ask first unless expert mode is on.
+A save is refused as a whole, with the card untouched and the PC's changes kept, if the volume was reformatted, the image is half written, a name is not valid on a FAT32 card (Loopback applies the stricter rule to every card), a file is 4 GiB or more, or a file the PC touched changed on the Switch after the scan. Large deletions ask first when safety mode is on.
 
 Windows' own housekeeping (`System Volume Information`, `$RECYCLE.BIN`, the dirty flag) is ignored.
 
 While a save runs, Loopback answers the PC "not ready" so a long save cannot time Windows out.
 
+## Updates
+
+Updating is a manual check. Loopback sends a HEAD request to the project's `releases/latest` page on GitHub and reads the redirect, which names the newest tag, so it needs no API token and no JSON. If that version is newer than the build's own, it can install it: it downloads `loopback.nro` and `loopback.nro.sha256` from that tag over HTTPS (libcurl on the console's own SSL service), checks that the file is a Switch app and that its SHA-256 matches, and only then renames the old file to `loopback.nro.bak` and the new one into place. A failed step leaves the old file where it was. Installing is refused while a drive is mounted, because it replaces a file on the card the PC is looking at.
+
 ## Threads
 
-The UI thread draws at 30 fps (20 when idle, display pace during the launch fade) and owns the framebuffer and input. The main thread owns USB, the scan and saves. A worker thread stores the write-behind buffers. They share a few atomic flags and a mutex-protected log.
+The UI thread draws at 30 fps (20 when idle, display pace during the launch fade) and owns the framebuffer and input. The main thread owns USB, the scan and saves. A worker thread stores the write-behind buffers, and another runs update checks and downloads. They share a few atomic flags and a mutex-protected log.

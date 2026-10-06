@@ -67,8 +67,9 @@ void     uiRandomizeLines(unsigned seed);
 void     uiSetModel(const UiModel* m);
 UiAction uiKeys(const UiKeys* k);
 UiAction uiTouch(int x, int y);       // a tap at screen coordinates (0..1279, 0..719); does what A would on that control
-bool     uiExpert(void);              // expert mode: Read and write by default, no warnings, changes saved without asking
-void     uiSetExpert(bool on);
+bool     uiSafety(void);              // safety mode, off by default. Off: mounts on launch, read and write, no warnings, saves without asking.
+                                      // On: waits for Mount, starts read only, warns, asks before big deletions and before unsaved changes are dropped.
+void     uiSetSafety(bool on);
 bool     uiAccessRw(void);
 UiTheme  uiTheme(void);              // the choice made in Advanced; the caller turns it into UiModel.dark
 void     uiSetTheme(UiTheme t);

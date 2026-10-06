@@ -99,7 +99,7 @@ static Dlg      g_dlg = D_NONE;
 static int      g_dlg_focus;
 static double   g_dlg_t0;
 static unsigned g_guard_del, g_guard_dirs, g_guard_rw;
-static bool     g_rw, g_allowed_whole, g_expert;
+static bool     g_rw, g_allowed_whole, g_safety;  // safety is off by default, so access starts as read and write
 static UiShare  g_share = UI_SHARE_WHOLE;
 static UiTheme  g_theme = UI_THEME_AUTO;
 static int      g_focus = F_PRIMARY;
@@ -119,7 +119,7 @@ bool uiAccessRw(void) { return g_rw; }
 UiShare uiShare(void) { return g_share; }
 UiTheme uiTheme(void) { return g_theme; }
 void uiSetTheme(UiTheme t) { g_theme = t; }
-bool uiExpert(void) { return g_expert; }
+bool uiSafety(void) { return g_safety; }
 bool uiDialogOpen(void) { return g_dlg != D_NONE; }
 
 // ---------------------------------------------------------------------------------------------
@@ -673,7 +673,7 @@ static void panelShadow(Canvas* c, float x, float y, float w, float h, float r) 
 #define RAIL_STEP 80
 #define RAIL_H 68
 
-enum { S_SHARE, S_THEME, S_EXPERT, S_UPDATES, S_LINK, S_ACTIVITY, S_COUNT };  // Advanced sections, in the order of the list
+enum { S_SHARE, S_THEME, S_SAFETY, S_UPDATES, S_LINK, S_ACTIVITY, S_COUNT };  // Advanced sections, in the order of the list
 
 static float backWidth(void) { return 28 + 32 + 12 + gfxTextWidth("Back", 26, &T_BLD) + 28; }
 
@@ -774,11 +774,11 @@ static void drawMain(Canvas* c, double now) {
 // ---------------------------------------------------------------------------------------------
 // Advanced: a list of sections on the left, one calm pane on the right.
 
-static const char* const SEC_NAME[S_COUNT] = { "Share", "Appearance", "Expert mode", "Updates", "Connection", "Activity" };
+static const char* const SEC_NAME[S_COUNT] = { "Share", "Appearance", "Safety mode", "Updates", "Connection", "Activity" };
 static const char* const SEC_DESC[S_COUNT] = {
     "What your PC sees when you mount. Eject first to change it.",
     "Colours for this screen.",
-    "For when you know what you are doing. Off by default.",
+    "Asks before anything risky. Off by default.",
     "Look for a newer Loopback and install it.",
     "How your PC is talking to this Switch.",
     "What happened in this session.",
@@ -787,21 +787,21 @@ static const char* const SHARE_NAME[3] = { "Whole card", "Test folder", "RAM dis
 static const char* const SHARE_DESC[3] = { "Everything on the SD card.", "Only the nx-test folder. Safe for trying things.", "A small throwaway drive for checking the cable." };
 static const char* const THEME_NAME[3] = { "Match console", "Light", "Dark" };
 static const char* const THEME_DESC[3] = { "Follows the Switch's own light or dark setting.", "Always light.", "Always dark." };
-static const char* const EXPERT_LINES[4] = {
-    "Read and write is the default.",
-    "No warning before allowing changes to the card.",
-    "Large deletions apply without asking.",
-    "Quitting or ejecting saves your changes first.",
+static const char* const SAFETY_LINES[4] = {
+    "Waits for you to press Mount, and starts read only.",
+    "Warns before your PC may change the whole card.",
+    "Asks before large deletions are applied.",
+    "Asks to save changes before you quit or eject.",
 };
 
-static int secOptCount(int sec) { return sec == S_SHARE || sec == S_THEME ? 3 : sec == S_EXPERT || sec == S_UPDATES ? 1 : 0; }
+static int secOptCount(int sec) { return sec == S_SHARE || sec == S_THEME ? 3 : sec == S_SAFETY || sec == S_UPDATES ? 1 : 0; }
 static int secSelected(int sec) { return sec == S_SHARE ? (int)g_share : sec == S_THEME ? (int)g_theme : 0; }
 
 static void secValue(int sec, char* out, size_t cap) {
     switch (sec) {
     case S_SHARE: snprintf(out, cap, "%s", SHARE_NAME[g_share]); break;
     case S_THEME: snprintf(out, cap, "%s", g_theme == UI_THEME_AUTO ? "Auto" : THEME_NAME[g_theme]); break;
-    case S_EXPERT: snprintf(out, cap, "%s", g_expert ? "On" : "Off"); break;
+    case S_SAFETY: snprintf(out, cap, "%s", g_safety ? "On" : "Off"); break;
     case S_UPDATES:
         if (g_m.upd == UI_UPD_READY) snprintf(out, cap, "Restart to finish");
         else if (g_m.upd == UI_UPD_AVAILABLE) snprintf(out, cap, "%s available", g_m.upd_latest);
@@ -925,20 +925,21 @@ static void drawPane(Canvas* c) {
     case S_UPDATES:
         drawUpdates(c, x, y, w, h, cy);
         break;
-    case S_EXPERT: {
+    case S_SAFETY: {
         float rx = x + 32, rw = w - 64;
         gfxRRect(c, rx, cy, rw, 84, 14, P->bg);
-        gfxText(c, rx + 28, cy + 37, "Enable expert mode", 28, P->ink, &T_BLD);
-        gfxText(c, rx + 28, cy + 66, g_expert ? "On" : "Off", 22, P->ink2, &T_REG);
+        gfxText(c, rx + 28, cy + 37, "Safety mode", 28, P->ink, &T_BLD);
+        gfxText(c, rx + 28, cy + 66, g_safety ? "On" : "Off", 22, P->ink2, &T_REG);
         float sx = rx + rw - 28 - 88, sy = cy + 20;  // the switch
-        gfxRRect(c, sx, sy, 88, 44, 22, g_expert ? P->green : P->mute);
-        gfxCircle(c, g_expert ? sx + 88 - 22 : sx + 22, sy + 22, 17, COL(255, 255, 255));
+        gfxRRect(c, sx, sy, 88, 44, 22, g_safety ? P->green : P->mute);
+        gfxCircle(c, g_safety ? sx + 88 - 22 : sx + 22, sy + 22, 17, COL(255, 255, 255));
         addHit(rx, cy, rw, 84, H_OPT, 0);
         if (g_in_pane) focusRing(c, rx, cy, rw, 84, 14);
+        gfxText(c, rx + 28, cy + 124, "Turn it on and Loopback:", 22, P->ink2, &T_REG);
         for (int i = 0; i < 4; i++) {
-            float ly = cy + 140 + i * 46;
+            float ly = cy + 166 + i * 46;
             gfxCircle(c, rx + 34, ly - 8, 5, P->ink2);
-            gfxText(c, rx + 56, ly, EXPERT_LINES[i], 25, P->ink, &T_REG);
+            gfxText(c, rx + 56, ly, SAFETY_LINES[i], 25, P->ink, &T_REG);
         }
         break;
     }
@@ -1090,7 +1091,7 @@ void uiInit(void) {
     mk.x = ST[UI_IDLE].x; mk.y = ST[UI_IDLE].y; mk.z = Z_B; mk.t = 0;
     mv.active = false;
     g_view = V_MAIN; g_dlg = D_NONE; g_focus = F_PRIMARY; g_sec = 0; g_opt = 0; g_in_pane = false;
-    g_rw = false; g_allowed_whole = false; g_expert = false; g_share = UI_SHARE_WHOLE;
+    g_rw = true; g_allowed_whole = false; g_safety = false; g_share = UI_SHARE_WHOLE;
     g_have_model = false; g_have_now = false; g_back_ok = false; g_base_ok = false;
     memset(&g_m, 0, sizeof(g_m));
     g_m.state = UI_IDLE; g_m.battery = -1;
@@ -1113,9 +1114,9 @@ void uiSetModel(const UiModel* m) {
     }
 }
 
-void uiSetExpert(bool on) {
-    g_expert = on;
-    if (on) g_rw = true;
+void uiSetSafety(bool on) {
+    g_safety = on;
+    g_rw = !on;  // access follows the mode: off starts read and write, on starts read only
 }
 
 void uiOpenGuard(unsigned files_deleted, unsigned dirs_deleted, unsigned files_rewritten) {
@@ -1136,13 +1137,13 @@ static UiAction pressPrimary(void) {
     UiState st = g_m.state;
     if (atRest(st)) {
         if (g_m.upd == UI_UPD_DOWNLOADING) return UIA_NONE;  // the app file is being replaced; mounting would scan it mid-swap
-        if (g_rw && g_share == UI_SHARE_WHOLE && !g_allowed_whole && !g_expert) { openDlg(D_WARN, 0); return UIA_NONE; }
+        if (g_rw && g_share == UI_SHARE_WHOLE && !g_allowed_whole && g_safety) { openDlg(D_WARN, 0); return UIA_NONE; }
         return notePress(UIA_MOUNT, false);
     }
     if (st == UI_READING) return UIA_NONE;
     if (st == UI_SAVING) return UIA_CANCEL;
     if (g_m.pending) {
-        if (g_expert) return notePress(UIA_EJECT_SAVE, true);
+        if (!g_safety) return notePress(UIA_EJECT_SAVE, true);
         openDlg(D_EJECT, 1);
         return UIA_NONE;
     }
@@ -1153,7 +1154,7 @@ static UiAction pressSave(void) { return saveVisible(g_m.state) ? UIA_SAVE : UIA
 
 static UiAction pressQuit(void) {
     if (g_m.pending) {
-        if (g_expert) return UIA_QUIT_SAVE;
+        if (!g_safety) return UIA_QUIT_SAVE;
         openDlg(D_QUIT, 1);
         return UIA_NONE;
     }
@@ -1183,9 +1184,9 @@ static UiAction dlgResolve(int pick) {
 static UiAction applyOption(int sec, int opt) {
     if (sec == S_SHARE) { if (atRest(g_m.state)) g_share = (UiShare)opt; }
     else if (sec == S_THEME) { g_theme = (UiTheme)opt; g_back_ok = false; }
-    else if (sec == S_EXPERT) {
-        g_expert = !g_expert;
-        if (atRest(g_m.state)) g_rw = g_expert;  // turning it on makes Read and write the default; off goes back to Read only
+    else if (sec == S_SAFETY) {
+        g_safety = !g_safety;
+        if (atRest(g_m.state)) g_rw = !g_safety;  // turning safety on goes back to Read only; off makes Read and write the default
     } else if (sec == S_UPDATES) {
         char buf[64];
         UpdBtn b = updButton(buf, sizeof(buf));
