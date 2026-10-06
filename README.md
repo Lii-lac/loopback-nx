@@ -31,7 +31,7 @@
 </p>
 
 - **Just a drive.** Drag and drop, right-click, "Open with", Send to, edit a file in place and hit save. Windows thinks it's a USB stick, so anything that can open a file can open one on your card.
-- **Fast.** Around 35 MB/s each way on USB 2. USB 3 speeds are untested.
+- **Fast.** Around 30 MB/s each way on USB 2. USB 3 speeds are untested.
 - **No driver, no PC software.** It uses the mass storage support that's already in Windows.
 - **Half a copy never lands.** Your PC's changes are held aside and applied to the card all at once, so if you pull the cable mid-copy, the card stays as it was.
 - **Stays out of your way.** It mounts as soon as it opens, saves a couple of seconds after your PC stops writing, and drops you back in the Homebrew Menu when you quit.
@@ -87,6 +87,21 @@ Loopback mounts as soon as it opens, so just plug in and work. The map shows whe
 - Files of 4 GiB or more can't be saved, and timestamps aren't kept on files you copy in.
 
 Everything else, including safety mode in full and the known limitations, is in [docs/reference.md](docs/reference.md).
+
+## Is Loopback the right tool?
+
+It isn't the only way to reach the card from a PC. Here are the other two I tried, with numbers from my own setup, so you can pick what suits you.
+
+| | Loopback | Haze | Hekate USB tools |
+|---|---|---|---|
+| **Best for** | When you're too lazy to reboot and don't mind slightly slower numbers. | A quick one-off copy with nothing to install. Comes with [Atmosphère](https://github.com/Atmosphere-NX/Atmosphere). | The fastest reads, big transfers, and jobs where you reboot anyway. Part of [Hekate](https://github.com/CTCaer/hekate). |
+| **Reboot needed** | No | No | Yes, into Hekate |
+| **Shows up as** | A drive letter | A portable device, no drive letter | A drive letter |
+| **Write** | about 31 MB/s | about 24 MB/s | about 25 MB/s |
+| **Read** | about 33 MB/s | about 25 MB/s | about 44 MB/s |
+| **Cons** | Files of 4 GiB or more can't be saved. Only tried with Windows 10 and 11. See the [known limitations](docs/reference.md#known-limitations). | No drive letter, so most programs can't open files on it directly. Copy first, then work on the copy. | The console isn't running while it's connected. Still needs to boot after you're done moving files. |
+
+<sub>Measured by writing/reading 1gb file of random data, treat as rough estimate, especially for haze.</sub>
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/images/divider-dark.svg">
