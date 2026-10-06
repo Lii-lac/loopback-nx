@@ -556,7 +556,7 @@ static EjectKind ejectKind(const UiModel* m) {
     switch (m->state) {
     case UI_MOUNTED: return m->io_busy ? EJ_WAIT : EJ_SAFE;
     case UI_PENDING: return EJ_SAVE;
-    case UI_GONE: return m->pending ? EJ_SAVE : EJ_SAFE;
+    case UI_GONE: return m->pending ? EJ_SAVE : EJ_NONE;  // ejected cleanly: nothing is mounted
     case UI_SAVING: return EJ_WAIT;
     default: return EJ_NONE;
     }
@@ -580,13 +580,23 @@ static void arrivalBar(Canvas* c, float y, Col line, float level, const char* na
     gfxTextR(c, right, y + 23, num, 22, ink, &T_BLD);
 }
 
-// 0..1: how much the press of Mount/Eject is lighting bar i. Each bar comes on a beat after the one above, holds, then settles.
-static float pressGlow(int i) {
+// The board is lit while the drive is on: from pressing Mount until Eject, whether or not anything is moving ("-" is the idle figure).
+static bool boardOn(const UiModel* m) {
+    switch (m->state) {
+    case UI_READING: case UI_WAITING: case UI_MOUNTED: case UI_PENDING: case UI_SAVING: return true;
+    case UI_GONE: return m->pending;  // cable out with changes still held
+    default: return false;
+    }
+}
+
+// Pressing Mount switches the bars on and pressing Eject switches them off, one after another, each a beat after the one above.
+static float pressLevel(int i, float to, float from) {
     double a = g_now - g_press_t0 - i * 0.12;
-    if (a <= 0 || a > 1.5) return 0.0f;
-    float up = a < 0.12 ? (float)(a / 0.12) : 1.0f;
-    float down = a > 0.9 ? (float)(1.0 - (a - 0.9) / 0.6) : 1.0f;
-    return up < down ? up : down;
+    if (a >= 0.4 || g_press_t0 < 0) return to;
+    if (a <= 0) return from;
+    float u = (float)(a / 0.4);
+    u = u * u * (3.0f - 2.0f * u);
+    return from + (to - from) * u;
 }
 
 static void drawActivity(Canvas* c) {
@@ -596,9 +606,10 @@ static void drawActivity(Canvas* c) {
     rateParts(g_m.read_mbps, rv, sizeof(rv));
     bool wl = g_m.write_mbps >= 0.05f, rl = g_m.read_mbps >= 0.05f;
     EjectKind ek = ejectKind(&g_m);
-    float base[3] = { wl ? 1.0f : 0.22f, rl ? 1.0f : 0.22f, ek == EJ_SAFE ? 1.0f : ek == EJ_NONE ? 0.22f : 0.55f };
+    bool on = boardOn(&g_m);
+    float base[3] = { on ? 1.0f : 0.22f, on ? 1.0f : 0.22f, !on ? 0.22f : (ek == EJ_WAIT || ek == EJ_SAVE) ? 0.55f : 1.0f };
     float lv[3];
-    for (int i = 0; i < 3; i++) { float g = pressGlow(i); lv[i] = base[i] + (1.0f - base[i]) * g; }
+    for (int i = 0; i < 3; i++) lv[i] = pressLevel(i, base[i], g_press_eject ? 1.0f : 0.22f);
     const char* ev = ek == EJ_SAFE ? "Safe" : ek == EJ_WAIT ? "Wait" : ek == EJ_SAVE ? "Save first" : "-";
     if (g_press_eject && g_now - g_press_t0 < 1.2) ev = "Ejecting";
     arrivalBar(c, ACT_Y + 5, LA(), lv[0], "Writing", wv, wl ? "MB/s" : "");
