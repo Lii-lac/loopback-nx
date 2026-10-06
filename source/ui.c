@@ -366,7 +366,7 @@ static const char* primaryLabel(UiState s, bool connecting) {
 static bool atRest(UiState s) { return s == UI_IDLE || (s == UI_GONE && !g_m.pending); }
 static bool primaryEnabled(UiState s) { return s != UI_READING; }
 static bool saveVisible(UiState s) { return s == UI_PENDING || (s == UI_GONE && g_m.pending); }
-static const char* saveLabel(UiState s) { return s == UI_GONE ? "Save what arrived" : "Save now"; }
+static const char* saveLabel(UiState s) { return s == UI_GONE ? "Save arrived" : "Save now"; }
 
 // ---------------------------------------------------------------------------------------------
 // Main screen
@@ -628,25 +628,31 @@ static void drawActivity(Canvas* c) {
 
 typedef struct { float px, pw, sx, sw, ax, aw, w1, w2; } Row;
 
-static void selectorWidths(float* w1, float* w2) {
-    *w1 = gfxTextWidth("Read only", 26, &T_BLD) + 52;
-    *w2 = gfxTextWidth("Read and write", 26, &T_BLD) + 52;
+static void selectorWidths(float* w1, float* w2, float pad) {
+    *w1 = gfxTextWidth("Read only", 26, &T_BLD) + pad;
+    *w2 = gfxTextWidth("Read and write", 26, &T_BLD) + pad;
 }
 
+// The controls sit left to right and must end before Quit. The Switch's font is wider than the one the PC renders use, and with Save
+// showing the row is the longest it gets, so if it does not fit the gaps and the padding inside the Read/Write selector shrink step by step.
 static void layoutRow(UiState st, bool cn, Row* r) {
+    static const float GAPS[4] = { BTN_GAP, 24, 18, 14 };
+    static const float PADS[4] = { 52, 44, 36, 28 };
     float tw = gfxTextWidth(primaryLabel(st, cn), 30, &T_BLD);
-    r->px = 64;
-    r->pw = 28 + 28 + 14 + tw + 22 + 32 + 28;
-    if (r->pw < 230) r->pw = 230;
-    float x = r->px + r->pw + BTN_GAP;
-    r->sx = x; r->sw = 0;
-    if (saveVisible(st)) {
-        r->sw = 28 + gfxTextWidth(saveLabel(st), 28, &T_BLD) + 22 + 32 + 28;
-        x += r->sw + BTN_GAP;
+    float pw = 28 + 28 + 14 + tw + 22 + 32 + 28;
+    if (pw < 230) pw = 230;
+    float sw = saveVisible(st) ? 28 + gfxTextWidth(saveLabel(st), 28, &T_BLD) + 22 + 32 + 28 : 0;
+    for (int i = 0; i < 4; i++) {
+        float gap = GAPS[i];
+        r->px = 64; r->pw = pw;
+        float x = r->px + pw + gap;
+        r->sx = x; r->sw = sw;
+        if (sw > 0) x += sw + gap;
+        selectorWidths(&r->w1, &r->w2, PADS[i]);
+        r->ax = x;
+        r->aw = 8 + r->w1 + 4 + r->w2;
+        if (r->ax + r->aw + gap <= QUIT_X) break;  // the last step is used even if it still does not fit
     }
-    selectorWidths(&r->w1, &r->w2);
-    r->ax = x;
-    r->aw = 8 + r->w1 + 4 + r->w2;
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -772,7 +778,7 @@ static const char* const SEC_NAME[S_COUNT] = { "Share", "Appearance", "Expert mo
 static const char* const SEC_DESC[S_COUNT] = {
     "What your PC sees when you mount. Eject first to change it.",
     "Colours for this screen.",
-    "For when you know what you are doing. Off unless you turn it on.",
+    "For when you know what you are doing. Off by default.",
     "Look for a newer Loopback and install it.",
     "How your PC is talking to this Switch.",
     "What happened in this session.",
