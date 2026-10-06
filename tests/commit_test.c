@@ -15,6 +15,7 @@
 //       cancel   cancel from the progress callback after the first chunk of new data
 //       hide=P   leave <tree>/P out of the volume (the app's own folder)
 //       poke=P   append a byte to <tree>/P after the volume was built, as if the Switch changed it
+//       nodata=N withhold the data sectors of the file named N from the replay: its folder entry arrives, its data does not
 //       Writes <workdir>/post.img (the volume rescanned after the commit) when the card was changed.
 //
 // Exit codes: 0 committed (or nothing to do), 3 refused before touching anything, 4 applied with errors.
@@ -23,6 +24,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include "../source/exfat_parse.h"
 #include "../source/exfat_synth.h"
 
 #define CHUNK 2048  // sectors per I/O (1 MiB)
@@ -70,6 +72,43 @@ static int flushRun(Backend* be, Run* r, uint64_t* sectors) {
     return rc;
 }
 
+// Sectors in [g_skip_lo, g_skip_hi) are treated as unchanged: the data of a file whose entry the host wrote but whose data it did not.
+static uint64_t g_skip_lo, g_skip_hi;
+
+static bool diffSector(uint64_t lba, const unsigned char* a, const unsigned char* b) {
+    if (lba >= g_skip_lo && lba < g_skip_hi) return false;
+    return memcmp(a, b, 512) != 0;
+}
+
+static bool imgRead(void* user, uint64_t lba, uint32_t count, void* out) {
+    FILE* f = user;
+    return fseeko(f, (off_t)(lba * 512), SEEK_SET) == 0 && fread(out, 512, count, f) == count;
+}
+
+// Finds the clusters of the file called name in the modified image.
+static bool findFileSectors(const char* img, const char* name) {
+    FILE* f = fopen(img, "rb");
+    if (!f) { perror(img); return false; }
+    ExfatTree t;
+    memset(&t, 0, sizeof(t));
+    bool ok = exfatParse(&t, imgRead, f);
+    if (!ok) fprintf(stderr, "parse failed: %s\n", t.err);
+    bool found = false;
+    for (uint32_t i = 1; ok && i < t.n_nodes; i++) {
+        const ExfatNode* n = &t.nodes[i];
+        if (n->is_dir || n->ignored || strcmp(n->name, name) != 0 || n->first_cluster < 2) continue;
+        uint64_t cluster_sectors = 1ull << t.spc_shift, clusters = (n->data_len + cluster_sectors * 512 - 1) / (cluster_sectors * 512);
+        g_skip_lo = t.heap_off + ((uint64_t)(n->first_cluster - 2) << t.spc_shift);
+        g_skip_hi = g_skip_lo + clusters * cluster_sectors;
+        found = true;
+        break;
+    }
+    exfatFree(&t);
+    fclose(f);
+    if (!found) fprintf(stderr, "nodata: no file named %s in the image\n", name);
+    return found;
+}
+
 static int replayImage(Backend* be, const char* path, bool subset, uint64_t* sectors) {
     FILE* f = fopen(path, "rb");
     if (!f) { perror(path); return 1; }
@@ -85,9 +124,9 @@ static int replayImage(Backend* be, const char* path, bool subset, uint64_t* sec
         fseeko(f, (off_t)(lba * 512), SEEK_SET);
         if (fread(img, 512, n, f) != n) { fprintf(stderr, "short image read\n"); return 1; }
         for (uint32_t i = 0; i < n;) {
-            if (!memcmp(base + i * 512, img + i * 512, 512)) { i++; continue; }
+            if (!diffSector(lba + i, base + i * 512, img + i * 512)) { i++; continue; }
             uint32_t j = i;
-            while (j < n && memcmp(base + j * 512, img + j * 512, 512)) j++;
+            while (j < n && diffSector(lba + j, base + j * 512, img + j * 512)) j++;
             if (lba + i != run_end) {  // a new run
                 if (flushRun(be, &run, sectors)) return 1;
                 skip = subset && !skip;  // alternate: forward, drop, forward, ...
@@ -165,6 +204,7 @@ int main(int argc, char** argv) {
     bool subset = false;
     const char* poke = NULL;
     for (int i = 5; i < argc; i++) {
+        if (!strncmp(argv[i], "nodata=", 7) && !findFileSectors(argv[4], argv[i] + 7)) return 1;
         if (!strcmp(argv[i], "dry")) opts.dry_run = true;
         else if (!strcmp(argv[i], "yes")) opts.confirm = confirmYes;
         else if (!strcmp(argv[i], "subset")) subset = true;

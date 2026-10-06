@@ -28,7 +28,7 @@
 #define COPY_CHUNK         (2u * 1024u * 1024u)
 #define MAX_DEPTH          256
 
-enum { F_MOVED = 1, F_MODIFIED = 2 };
+enum { F_MOVED = 1, F_MODIFIED = 2, F_STALE = 4 };  // F_STALE: the host's entry is out of date; the file on the card stays as it is
 
 typedef struct {
     Synth*            s;
@@ -179,6 +179,34 @@ static bool unchangedOnCard(Commit* c, uint32_t old_id) {
     return S_ISREG(st.st_mode) && (uint64_t)st.st_size == on->size && synthDosTime(st.st_mtime) == on->mtime;
 }
 
+// Whether the host actually wrote a file's data. A file the host creates always sends its data through the overlay, so a new entry
+// whose data is not there is not a new file: either the host has not got to the data yet (it writes the folder entry first), or
+// it is an out-of-date copy of a folder block that the host wrote back after a commit had already moved everything to new places.
+// Reading such an entry would create a file full of zeros, or of another file's bytes.
+typedef struct { Synth* s; uint64_t remaining; bool missing; } WrittenCtx;
+
+static bool writtenRunCb(void* user, uint32_t first, uint32_t count) {
+    WrittenCtx* w = user;
+    uint64_t bytes = (uint64_t)count * CLUSTER_BYTES;
+    if (bytes > w->remaining) bytes = w->remaining;
+    uint64_t blk = (w->s->heap_off + ((uint64_t)(first - 2) << SPC_SHIFT)) / OVL_BLOCK_SECTORS;
+    uint64_t n = (bytes + OVL_BLOCK_BYTES - 1) / OVL_BLOCK_BYTES;
+    for (uint64_t b = 0; b < n; b++)
+        if (!overlayHas(w->s->ovl, blk + b)) { w->missing = true; return false; }
+    w->remaining -= bytes;
+    return w->remaining > 0;
+}
+
+static bool dataMissing(Commit* c, const ExfatNode* n, bool* missing) {
+    *missing = false;
+    if (!n->data_len) return true;
+    if (!n->valid_len || n->first_cluster < 2) { *missing = true; return true; }
+    WrittenCtx w = { c->s, n->valid_len, false };
+    if (!exfatForEachRun(&c->t, n, writtenRunCb, &w)) return abortWith(c, "%s", c->t.err);
+    *missing = w.missing;
+    return true;
+}
+
 typedef struct { uint32_t depth, id; } DepthId;
 
 static int cmpDeepFirst(const void* a, const void* b) {
@@ -250,6 +278,30 @@ static bool plan(Commit* c) {
         c->rmatch[old] = i;
     }
 
+    // A created file whose data never arrived (see dataMissing). If the card already has a file with that name in that folder, the
+    // entry is stale and the file stays as it is. Otherwise the host has not finished the copy: refuse for now, so the next
+    // commit, after the data has arrived, picks it up whole.
+    for (uint32_t i = 1; i < t->n_nodes; i++) {
+        const ExfatNode* n = &t->nodes[i];
+        if (n->ignored || n->is_dir || c->match[i] != NONE) continue;
+        bool missing;
+        if (!dataMissing(c, n, &missing)) return false;
+        if (!missing) continue;
+        uint32_t po = c->match[n->parent], old = NONE;
+        if (po != NONE) {
+            const Node* pn = &s->nodes[po];
+            for (uint32_t k = 0; k < pn->child_count; k++) {
+                uint32_t id = pn->child_start + k;
+                if (!s->nodes[id].is_dir && c->rmatch[id] == NONE && !strcmp(oldName(c, id), n->name)) { old = id; break; }
+            }
+        }
+        if (old == NONE) return abortWith(c, "'%s' has no data yet: the PC has not finished writing it", n->name);
+        c->match[i] = old;
+        c->rmatch[old] = i;
+        c->flags[i] |= F_STALE;
+        commitLog(c, "kept '%s' as it is: the PC's entry for it is out of date and carries no data", n->name);
+    }
+
     // Classify, and check everything that could fail later.
     char path[MAX_PATH_LEN];
     for (uint32_t i = 1; i < t->n_nodes; i++) {
@@ -258,6 +310,7 @@ static bool plan(Commit* c) {
         if (!nameOk(n->name)) return abortWith(c, "name not allowed on the card: '%s'", n->name);
         if (!newPath(c, i, path, sizeof(path))) return abortWith(c, "path too long: '%s'", n->name);
 
+        if (c->flags[i] & F_STALE) continue;
         uint32_t old = c->match[i];
         bool rewrite = false;
         if (old == NONE) {

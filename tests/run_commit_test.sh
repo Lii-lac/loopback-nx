@@ -326,6 +326,39 @@ if run hidden; then
     [ $SCEN_FAIL -eq 0 ] && PASS=$((PASS+1))
 fi
 
+if run unfinished; then
+    # The host has written the folder entry of a new file but not its data yet (it writes them in that order and lazily). Committing
+    # now would create a file of the right size full of zeros. The commit must wait instead, and leave the card exactly as it was.
+    ops_new_late() { head -c 200000 /dev/urandom > $V/late.bin; echo fine > $V/other_new.txt; }
+    scenario unfinished ops_new_late 3 nodata=late.bin
+    grep -q "has no data yet" $W/commit.out; check "refused because the data had not arrived" $?
+    [ ! -e $T/late.bin ] && [ ! -e $T/other_new.txt ]; check "no zero-filled file was created" $?
+fi
+
+if run stale; then
+    # After a commit the host can write back an out-of-date copy of a folder block, with entries for files that are already on the
+    # card and no data for them. Those entries must leave the files as they are, while genuinely new files still arrive.
+    echo "== stale"
+    SCEN_FAIL=0
+    rm -rf $T $W; mkdir -p $W; cp -a --sparse=always $P $T
+    /tmp/commit_test $T $W dump >/dev/null
+    mount_img $W/vol.img rw
+    head -c 300000 /dev/urandom > $V/spacer.bin; echo brand-new > $V/fresh.txt
+    mv $V/a/rand.bin $V/a/rand_old.bin; head -c 100000 /dev/urandom > $V/a/rand.bin; rm $V/a/rand_old.bin   # new clusters for the same name
+    umount_img
+    /tmp/commit_test $T $W commit $W/vol.img nodata=rand.bin > $W/commit.out 2>&1; rc=$?
+    sed -n '/REPORT/p;/out of date/p' $W/commit.out | sed 's/^/  /'
+    check "exit code $rc (wanted 0)" $([ $rc -eq 0 ] && echo 0 || echo 1)
+    grep -q "out of date" $W/commit.out; check "the stale entry was recognised" $?
+    cmp -s $P/a/rand.bin $T/a/rand.bin; check "the file on the card was kept as it was" $?
+    [ -s $T/spacer.bin ]; check "the other new file arrived with its data" $?
+    [ "$(cat $T/fresh.txt 2>/dev/null)" = brand-new ]; check "the genuinely new file arrived" $?
+    fsck.exfat $W/post.img >/tmp/fsck.out 2>&1; check "rescanned volume passes fsck.exfat" $?
+    ls -A $T | grep -q nxusb-stage && stage_left=1 || stage_left=0
+    check "no leftovers in stage" $stage_left
+    [ $SCEN_FAIL -eq 0 ] && PASS=$((PASS+1))
+fi
+
 if run conflict; then
     # The host deletes a file that the Switch modified after the scan: must be refused.
     POKED=1 scenario conflict ops_delete_conflict 3 poke=docs/notes.txt

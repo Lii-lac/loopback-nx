@@ -21,7 +21,7 @@ None of these need a Switch. The last three need `--privileged` because they mou
 | `tests/host_test.c` | SCSI decoding, and that the RAM disk is a valid FAT image. Build with `gcc tests/host_test.c source/scsi.c source/backend_ram.c`, run it with an output path and check that with `fsck.fat -n`. |
 | `tests/run_parse_test.sh` | The exFAT parser against volumes made by `mkfs.exfat`. |
 | `tests/run_synth_test.sh` | The generated volume against `fsck.exfat` and a real mount. |
-| `tests/run_commit_test.sh` | The write path end to end, with the Linux exFAT driver standing in for Windows. 31 scenarios; pass names to run only some. |
+| `tests/run_commit_test.sh` | The write path end to end, with the Linux exFAT driver standing in for Windows. 33 scenarios; pass names to run only some. |
 | `tests/ui_render.c` | Renders every screen to images with the same drawing code the console runs. Needs gcc and a TTF font. |
 | `tests/windows/` | The write path against the real Windows exFAT driver, through a VHD. See its README. |
 
